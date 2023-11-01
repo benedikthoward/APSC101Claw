@@ -1,167 +1,112 @@
 /*
 Name:			Benedikt Howard
 E-mail:			benedikthoward@gmail.com
-Student Number:	85748242
-Lab Section:	L2O
-Date:			13. Apr, 2023
-Purpose:		A implementation of the classic Simon's game memory game on an arduino uno
+Student Number:		85748242
+Date:			13. Jan, 2023
+Purpose:		A simple control flow for a claw powered by an arduino uno
 */
 
-//define constants etc.
-#define Game_Length 5
-#define Time_OUT_S 5
-int sequence[Game_Length];
-long unsigned int time;
+#include <Servo.h>
+#include <NewPing.h>
 
-#define LED_LOSE 13
-#define LEDR 12
-#define LEDY 11
-#define LEDB 10
-#define LEDG 9
-#define LED_WIN 8
+//reference for pin definition
+#define TRIGGER_PIN 9
+#define ECHO_PIN 10
+#define SERVO_PIN 8
+#define RED_LED 7
+#define BLUE_LED 6
+#define GREEN_LED 5
+#define TIME_1 2
+#define TIME_2 3
+#define TIME_3 4
 
-#define pb_red 7
-#define pb_yellow 6
-#define pb_blue 5
-#define pb_green 4
-
-//define functions prototypes
-void DisplaySequence(int sequence[],int index);//generates random sequence from index 0 to i and displays it
-int checkSequence(int sequence[],int index); // returns 1 for the correct sequence being entered and 0 otherwise
-void reset(int sequence[]);//clears the array
-void dispWL(int win);//pass 1 for win and 0 for loss
-void StartSequence(void);//turns all the Game LEDs on for 2s , then off and delays for 2 seconds
+// Maximum distance we want to ping for (in centimetres).
+#define MAX_DISTANCE 400
+#define CLOSING_DISTANCE 10
+#define OPENING_TIME 15
 
 
-//initialization
-void setup()
-{
- 
-  pinMode(LED_LOSE,OUTPUT);
-  pinMode(LED_WIN,OUTPUT);
-  pinMode(LEDR,OUTPUT);
-  pinMode(LEDY,OUTPUT);
-  pinMode(LEDB,OUTPUT);
-  pinMode(LEDG,OUTPUT);
-  
-  pinMode(pb_red,INPUT);
-  pinMode(pb_yellow,INPUT);
-  pinMode(pb_blue,INPUT);
-  pinMode(pb_green,INPUT);
-  randomSeed(analogRead(0));
+//creates objects for the servo and sonar
+Servo myservo;
+NewPing sonar(TRIGGER_PIN, ECHO_PIN, MAX_DISTANCE);
+
+void setup() {
+Serial.begin(9600);
+myservo.attach(SERVO_PIN);
+	
+//defines pins for the LED timers
+pinMode(RED_LED, OUTPUT);
+pinMode(BLUE_LED, OUTPUT);
+pinMode(GREEN_LED, OUTPUT);
+	
+// defines pins for the time function
+pinMode(TIME_1,INPUT);
+pinMode(TIME_2, INPUT);
+pinMode(TIME_3, INPUT);
 }
 
-
-//main program loop
-void loop()
-{
-  StartSequence();
-  
-  for(int i =0; i<Game_Length;i++){
-    DisplaySequence(sequence, i);
-    if(checkSequence(sequence, i))
-    {
-    	//does nothing and iterates loop
-    }
-    else//the sequence was not correctly entered and the game was lost
-    {
-      dispWL(0);
-      break;
-    }
-    //can only be reached if all the sequences were correctly input and the game was won
-    if(i ==Game_Length-1)
-    {
-      dispWL(1);
-    }
-      
-  }
-  reset(sequence);
-  
+void loop() {
+	myservo.write(0);
+	int detect = 0;
+	int delay_time;
+	//detects object
+	while(detect < 5){
+  		int distance = sonar.ping_cm();
+  		if(distance<= CLOSING_DISTANCE&& distance!=0){
+    			detect++;
+  		}else if(detect >= 0){
+    			detect--;
+  		}
+		Serial.println(distance);
+  		delay(100);
+	}
+	
+	// BLINKS to warn of closing
+	digitalWrite(GREEN_LED, HIGH);
+	delay(1000);
+	digitalWrite(GREEN_LED, LOW);
+	
+	//checks how long the delay should be
+	if(digitalRead(TIME_1)==1){
+		Serial.println("10s");
+		delay_time = 10*1000;
+	}else if(digitalRead(TIME_2)==1){
+		delay_time = 20*1000;
+		Serial.println("20s");
+	}else if(digitalRead(TIME_3)==1){
+		Serial.println("30s");
+		delay_time = 30*1000;
+	} else{
+		Serial.println("25s");
+		delay_time = 25*10000;
+	}
+	
+	//closes
+	for(int i = 0; i<=180;i++){
+	myservo.write(i);
+	delay(3.5);
+	}
+	delay(500);
+	
+	//turns the indicator LEDs on
+	digitalWrite(GREEN_LED, HIGH);
+	digitalWrite(BLUE_LED, HIGH);
+	digitalWrite(RED_LED, HIGH);
+	
+	//delays and LED indicator
+	delay(delay_time/4);
+	digitalWrite(GREEN_LED, LOW);
+	delay(delay_time/4);
+	digitalWrite(BLUE_LED, LOW);
+	delay(delay_time/4);
+	digitalWrite(RED_LED, LOW);
+	delay(delay_time/4);
+	
+	//opens the servo  
+	for(int i = 180; i>=0;i--){
+		myservo.write(i);
+		delay(3.5);
+	}
+	delay(10000);
 }
 
-void DisplaySequence(int sequence[],int index)//generates random sequence from index 0 to i and displays it
-{
-  for(int i=0;i<=index;i++){
-    if(i==index)
-    {
-  		sequence[i]=random(9,13);
-    }
-    digitalWrite(sequence[i],HIGH);
-    delay(2000);
-    digitalWrite(sequence[i],LOW);
-    delay(500);
-  }
-} 
-
-int checkSequence(int sequence[],int index)// returns 1 for the correct sequence being entered and 0 otherwise
-{
-  for(int i=0;i<=index;i++){
-    time = millis();
-    while(digitalRead(sequence[i]-5)==LOW){
-      //checks if it has been two Time_OUT_S seconds since the last LED lit up or a button was pressed
-      //checks if a wrong button was pressed by comparing the the index in the array (-5 for pin offset) to the digital read of that button
-      if(millis()>=Time_OUT_S*1000+time||(digitalRead(pb_red)&&sequence[i]-5!=pb_red)||(digitalRead(pb_yellow)&&sequence[i]-5!=pb_yellow)||(digitalRead(pb_blue)&&sequence[i]-5!=pb_blue)||(digitalRead(pb_green)&&sequence[i]-5!=pb_green)){
-      	return 0;
-      }
-    }
-    //keeps the LED associated with a correct button press on while it is pressed
-    while(digitalRead(sequence[i]-5)){
-    	digitalWrite(sequence[i],HIGH);
-    }
-    digitalWrite(sequence[i],LOW);
-  }
-  delay(2000);
-  return 1;
-}
-
-void reset(int sequence[])//clears the array
-{
-  for(int i=0;i<Game_Length;i++){
-  	sequence[i]=0;
-  }
-}
-
-void dispWL(int win)
-{
-  if(win>0){
-    digitalWrite(LED_WIN,HIGH);
-      delay(1000);
-      digitalWrite(LED_WIN,LOW);
-      delay(1000);
-      digitalWrite(LED_WIN,HIGH);
-      delay(1000);
-      digitalWrite(LED_WIN,LOW);
-      delay(1000);
-      digitalWrite(LED_WIN,HIGH);
-      delay(1000);
-      digitalWrite(LED_WIN,LOW);
-  }else{
-    digitalWrite(LED_LOSE,HIGH);
-      delay(1000);
-      digitalWrite(LED_LOSE,LOW);
-      delay(1000);
-      digitalWrite(LED_LOSE,HIGH);
-      delay(1000);
-      digitalWrite(LED_LOSE,LOW);
-      delay(1000);
-      digitalWrite(LED_LOSE,HIGH);
-      delay(1000);
-      digitalWrite(LED_LOSE,LOW);
-  } 
-
-}
-
-void StartSequence(void)
-{
-	digitalWrite(LEDR,HIGH);
-  digitalWrite(LEDY,HIGH);
-  digitalWrite(LEDB,HIGH);
-  digitalWrite(LEDG,HIGH);
-  delay(2000);
-  digitalWrite(LEDR,LOW);
-  digitalWrite(LEDY,LOW);
-  digitalWrite(LEDB,LOW);
-  digitalWrite(LEDG,LOW);
-  delay(2000);
-
-}
